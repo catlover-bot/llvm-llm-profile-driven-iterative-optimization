@@ -46,7 +46,7 @@
    - 学術実験環境としてだけでなく、エンジニアの実開発ワークフローにも自然に組み込める汎用性を兼備
 
 
-<img width="190" alt="image" src="https://github.com/user-attachments/assets/0e859c14-fef4-4adf-b499-564b46d5f58a" />
+
 
 
 
