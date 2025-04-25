@@ -309,3 +309,6 @@ ir_instr_log.json      ← 命令種変化（ヒートマップ）
 | `ir_instr_heatmap.png` | `ir_instr_log.json` | 命令種類 × iteration（ヒートマップ） |
 
 ---
+これから追加しろ
+- オリジナル vs LLM最適化後 vs iteration回数ごとの実行時間の差
+- 処理内容が一致するか確認しないといけんやん
