@@ -238,3 +238,81 @@ make heatmap
 
 > 🔁 **CコードをLLVM IRにして → 実行して → プロファイルをLLMに渡して → IRを再生成 → 再ビルド → 結果を比較し → 可視化する完全自動システム**
 ---
+
+🥷Jake最終解析完了…  
+📡 あなたが送ってくれた全ファイルをもとに、**この最適化システムを構成するファイルたちの「機能 × ワークフロー位置」マッピング**を完全図解で解説する。
+
+---
+
+# ✅ 全ファイルの役割とワークフローとの関係【完全対応表】
+
+| ファイル名 | ワークフロー内の位置 | 機能概要 |
+|------------|------------------------|-----------|
+| **`batch_optimize_all.sh`** | 💥全体のマスタースクリプト（ワークフロー1〜7すべて制御） | PolyBenchの各 `.c` に対して O3 → perf → LLM最適化 → 再perf → 評価ログ |
+| **`profile_and_parse.py`** | 📍STEP 3 | perf出力（`*.prof.txt`）を LLMが読める自然言語 (`*.prof.md`) に変換 |
+| **`optimize_ir_llm.py`** | 📍STEP 4（核）| LLMにIRとプロファイルを渡して反復最適化＋IR行数/命令/プロファイル変化を記録 |
+| **`diff_stats.py`** | 📍STEP 7 | 最適化前後のIR行数 / cycles / cache-missを比較し、`optimization_report.csv` に記録 |
+| **`generate_iteration_plot.py`** | 📍STEP 8a | 各iterationの `cycles`, `cache-misses`, `IR行数` をプロット（折れ線グラフ） |
+| **`generate_instr_heatmap.py`** | 📍STEP 8b | 各iterationごとの命令種カウントをヒートマップ化（`ir_instr_log.json`を使用） |
+| **`generate_report.py`** | 📍STEP 8c | `optimization_report.csv` の before/after を棒グラフ化（3種） |
+| **`launch.json`** | 🧪デバッグ | VSCodeから `optimize_ir_llm.py` または `.opt` バイナリをデバッグ実行 |
+| **`tasks.json`** | ⚙️ビルドタスク | VSCodeで Ctrl+Shift+B による5段階のIR最適化ワークフローを構成 |
+| **`Makefile`** | 🧠CLI自動化 | `make all-optimize / report / plot / heatmap` により各ワークフロー呼び出しを可能に |
+
+---
+
+## 🔁 各ファイルが関与するステップマッピング
+
+| ステップ | 関与ファイル | 処理内容 |
+|---------|--------------|-----------|
+| STEP 1 | `batch_optimize_all.sh`・`tasks.json` | `.c → .ll` 変換（O3） |
+| STEP 2 | `batch_optimize_all.sh` | `.ll → .opt` バイナリ化 + `perf` 実行 |
+| STEP 3 | `profile_and_parse.py` | `perf` 出力 → `.prof.md`（LLMプロンプト化） |
+| STEP 4 | `optimize_ir_llm.py` | LLMによるIR最適化（反復あり）、中間データ出力 |
+| STEP 5 | `batch_optimize_all.sh`・`tasks.json` | `.opt.ll → .opt.final` ビルド |
+| STEP 6 | `batch_optimize_all.sh` | 再 `perf` 計測 |
+| STEP 7 | `diff_stats.py` | 最適化前後の差分を `.csv` に記録 |
+| STEP 8a | `generate_iteration_plot.py` | iterationごとの変化をグラフ化 |
+| STEP 8b | `generate_instr_heatmap.py` | 命令種の変化をヒートマップで可視化 |
+| STEP 8c | `generate_report.py` | 各kernelのbefore/after差を棒グラフ出力 |
+
+---
+
+## 🎯 例：`gemm.c` で起きるファイル変化フロー
+
+```txt
+gemm.c
+  ↓ clang -O3
+gemm.ll
+  ↓ clang
+gemm.opt
+  ↓ perf stat
+gemm.prof.txt
+  ↓ profile_and_parse
+gemm.prof.md
+  ↓ optimize_ir_llm (3回反復)
+gemm.opt.ll
+  ↓ clang
+gemm.opt.final
+  ↓ perf再実行
+gemm.opt.prof.txt
+  ↓ diff_stats
+optimization_report.csv （に追記）
+
+metrics_log.json       ← iterationごとの perf & IR変化
+ir_instr_log.json      ← 命令種変化（ヒートマップ）
+```
+
+---
+
+## ✅ 補足：どの出力がどの可視化に使われるか
+
+| 可視化名 | 使用ファイル | 内容 |
+|----------|--------------|------|
+| `report_cycles.png` | `optimization_report.csv` | 各kernelの before/after cycles |
+| `report_cache.png` | 同上 | cache-miss before/after |
+| `report_ir_lines.png` | 同上 | IR行数 before/after |
+| `iteration_optimization_report.png` | `metrics_log.json` | 各iterationの変化（折れ線3種） |
+| `ir_instr_heatmap.png` | `ir_instr_log.json` | 命令種類 × iteration（ヒートマップ） |
+
+---
