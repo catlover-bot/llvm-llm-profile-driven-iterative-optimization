@@ -45,6 +45,7 @@
 ### 比較データ (compare_atax.csv)
 
 | step | matches_output | ir_instructions | exec_time_sec |
+|:----:|:--------------:|:---------------:|--------------:|
 | 1    | TRUE           | 262             | 0.012633      |
 | 2    | TRUE           | 215             | 0.020666      |
 | 3    | TRUE           | 215             | 0.019278      |
