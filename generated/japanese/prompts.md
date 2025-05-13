@@ -1,8 +1,10 @@
+<details><summary>1</summary>
+
 "あなたはC言語最適化の専門家です。PolyBenchのオリジナルコードと処理内容が一致しているコードを生成して下さい。さらに、そのコードは-O3より最適化されているコード生成を目指して下さい。返答はコードのみで```c ```で囲まないで出力してください。
+</details>
 
 
-
-
+<details><summary>2</summary>
 
 以下はCプログラムです。polybenchベンチマークの一部で、最適化を目的としています。  
 - 変数名は変更しないでください
@@ -15,12 +17,12 @@
 {source_code}
 """
 
+</details>
 
 
 
 
-
-
+<details><summary>3</summary>
 
 以下はCコードですが、コンパイルエラーが発生しました。
 - エラーメッセージをもとに修正してください
@@ -32,3 +34,4 @@
 {compile_error.strip() if compile_error else "不明なエラー"}
 
 元のコード:
+</details>
