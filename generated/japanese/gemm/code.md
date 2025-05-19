@@ -84,3 +84,74 @@
 ---
 
 </details>
+
+<details><summary>ll</summary>
+
+---
+
+##  **gemm\_base.ll（ベースライン）特徴**
+
+*  `__kmpc_*` 呼び出しなし → 並列化なし（シングルスレッド）
+*  `!llvm.loop.vectorize.*` メタデータなし → ベクトル化非対応
+*  ネストされたループ (`i`, `j`, `k`) がそのまま IR に反映
+* 命令構成：
+
+  * `load`, `fadd`, `fmul`, `store` のみ（スカラー操作）
+
+---
+
+##  `gemm_1.ll` の違い【OpenMP 並列化の導入】
+
+*  `__kmpc_fork_call`, `__kmpc_for_static_init` の出現 → **OpenMP 並列化**
+*  `@.omp_outlined.*` 関数が `i` ループ単位でアウトライン化
+*  SIMD 命令（`<4 x float>`など）なし → ベクトル化未適用
+*  `!llvm.loop.vectorize.enable` メタデータなし
+
+>  **gemm\_1.ll** = マルチスレッド実行向けに変換された IR。**並列処理導入**
+
+---
+
+##  `gemm_2.ll` の違い【OpenMP + SIMD強化】
+
+*  `__kmpc_*` 関数あり → `gemm_1` 同様の並列構造
+*  `!llvm.loop.vectorize.enable = true` メタデータ付き → **LLVM ベクトル化有効化**
+*  一部ループに `!llvm.loop.vectorize.width = 4` あり
+*  `fmul <4 x float>`, `fadd <4 x float>` などの **SIMD命令展開あり**
+*  `tmp` による中間演算導入（演算式順序が `alpha * sum + beta * C`）
+
+>  **gemm\_2.ll** = ベクトル命令 + 並列ループの併用。**SIMD & OpenMP のバランス最適化**
+
+---
+
+##  `gemm_3.ll` の違い【OpenMP + SIMD最大化 + 表現変更】
+
+*  `__kmpc_*` 呼び出しあり（並列処理維持）
+*  ループに `!llvm.loop.vectorize.enable = true` と `unroll.count = 4` メタ付き
+*  `fmul <4 x float>` 命令に加えて `llvm.memcpy` のようなブロック転送命令確認されることもあり（環境依存）
+*  `C[i][j] = tmp` 書き戻し直前にすべての操作をまとめて実施（命令スケジューラ効率化）
+
+>  **gemm\_3.ll** = ベクトル化最適化 + 演算縮約 + メモリアクセス効率の最大化を図る最終形
+
+---
+
+##  差分比較まとめ表
+
+| 項目                          | `gemm_base.ll` | `gemm_1.ll`  | `gemm_2.ll`                  | `gemm_3.ll`                          |
+| --------------------------- | -------------- | ------------ | ---------------------------- | ------------------------------------ |
+| OpenMP 並列処理                 | ❌              | ✅ `__kmpc_*` | ✅ `__kmpc_*`                 | ✅ `__kmpc_*`                         |
+| ベクトル化メタ (`vectorize`)       | ❌              | ❌            | ✅ `vectorize.enable/width`   | ✅ `vectorize.width` + `unroll.count` |
+| SIMD命令（`<N x float>`）       | ❌              | ❌            | ✅ `fadd`, `fmul <4 x float>` | ✅ 拡張 SIMD命令 + `memcpy`（一部）           |
+| 演算式再構成 (`alpha*A*B+beta*C`) | ❌              | ❌            | ✅                            | ✅                                    |
+| 書き戻し最適化 (`C[i][j]`)         | ❌              | 一部レジスタ利用     | ✅ 中間変数使用                     | ✅ SIMD + まとめて write                  |
+
+---
+
+##  結論
+
+* **gemm\_1.ll**：OpenMP による並列化適用 → マルチスレッド処理対応
+* **gemm\_2.ll**：SIMD展開 & `alpha*A*B+beta*C` 演算の再構成で演算最適化
+* **gemm\_3.ll**：ベクトル幅・ループ展開・メモリ効率すべての最適化を網羅した完成IR
+
+---
+
+</details>
