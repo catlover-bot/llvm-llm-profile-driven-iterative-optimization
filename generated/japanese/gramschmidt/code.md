@@ -76,3 +76,72 @@
 ---
 
 </details>
+
+<details><summary>ll</summary>
+
+---
+
+##  **base.ll（非最適化）特徴**
+
+*  `__kmpc_*` 系 OpenMP 呼び出しなし → 単一スレッド実行
+*  `!llvm.loop.*` メタデータなし → ベクトル化非対応
+*  3重ループ：`k` → `i`, `j` を使って逐次的に `Q`, `R`, `A` を更新
+* 使用命令：`load`, `fmul`, `fadd`, `fsub`, `store` のスカラー形式
+
+---
+
+##  `opt_1.ll` の違い【構文整理のみ】
+
+*  OpenMP 並列なし（`__kmpc_*` 呼び出しなし）
+*  SIMD命令も無し（`<4 x double>` など出現なし）
+*  `Q`, `R`, `A` 各ステップのメモリアクセスが `getelementptr` で正確に整理されている
+*  計算順、命令順序とも base と一致
+
+>  **opt\_1.ll** = LLVM IR レベルでもベースと同等。**命令順・構造維持型**
+
+---
+
+##  `opt_2.ll` の違い【OpenMP 並列化】
+
+*  `__kmpc_fork_call`, `__kmpc_for_static_init` の存在 → OpenMP 並列化（`k`ループベース）
+*  `@.omp_outlined.*` によるループ分割処理あり
+*  SIMD命令なし（スカラー命令構成のまま）
+*  vectorize メタなし
+
+>  **opt\_2.ll** = 並列化された IR だが、**ベクトル化は未対応**
+
+---
+
+##  `opt_3.ll` の違い【OpenMP + SIMD ベクトル命令化】
+
+*  `__kmpc_*` による OpenMP 並列構造を保持（`opt_2`と同等）
+*  `!llvm.loop.vectorize.enable = true` メタデータ付きループあり → LLVMベクトル化指示
+*  `fmul <4 x double>`, `fadd <4 x double>`, `fsub <4 x double>` などのSIMD命令出現
+*  `!llvm.loop.vectorize.width = 4`, `unroll.count = 4` メタ付き → ベクトル長とループ展開数指定
+*  ループキャリア依存性回避のための命令順変更が一部確認される
+
+>  **opt\_3.ll** = 並列処理 + SIMDベクトル命令 + 明示的メタによる LLVM 最適化誘導型 IR
+
+---
+
+##  差分まとめ表
+
+| 特徴                      | base.ll | opt\_1.ll | opt\_2.ll                 | opt\_3.ll                                 |
+| ----------------------- | ------- | --------- | ------------------------- | ----------------------------------------- |
+| OpenMP 並列化 (`__kmpc_*`) | ❌       | ❌         | ✅ `fork_call`, `outlined` | ✅ 同左                                      |
+| ベクトル化メタ (`vectorize`)   | ❌       | ❌         | ❌                         | ✅ `vectorize.enable`, `width=4`, `unroll` |
+| SIMD命令 (`<4 x double>`) | ❌       | ❌         | ❌                         | ✅ `fadd`, `fmul`, `fsub`                  |
+| ループ依存性の最適化              | ❌       | ❌         | 部分対応                      | ✅ `simd` 対応型の演算順序                         |
+| 命令スケジューリング変化            | ❌       | ❌         | ❌                         | ✅ LLVM最適化を促進するために順序調整あり                   |
+
+---
+
+##  結論
+
+* **opt\_1.ll**：構造保存型。IR最適化は未適用。
+* **opt\_2.ll**：OpenMP による並列実行が可能だが、命令レベルはスカラーのまま
+* **opt\_3.ll**：並列 + SIMD命令展開 + 明示ベクトル幅指定の **最終最適化 IR**
+
+---
+
+</details>
