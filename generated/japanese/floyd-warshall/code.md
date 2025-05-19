@@ -69,3 +69,72 @@
 ---
 
 </details>
+
+<details><summary>ll</summary>
+
+---
+
+##  **base.ll（非最適化）特徴**
+
+*  OpenMP 呼び出しなし → 単一スレッド構造
+*  メタデータ（`!llvm.loop.vectorize`, `unroll`）なし
+*  単純な3重ループ構造：`for k, i, j`
+* `path[i][j] = min(path[i][j], path[i][k] + path[k][j])` をスカラー命令で実行
+* LLVM 命令：`load`, `fadd`, `fcmp`, `select`, `store` のみ
+
+---
+
+##  `opt_1.ll` の違い【OpenMP並列化（iループ）】
+
+*  `__kmpc_fork_call`, `__kmpc_for_static_init` による OpenMP 並列化あり
+*  `@.omp_outlined.*` 関数に `i` ループを分割 → `i` 単位でマルチスレッド化
+*  `!llvm.loop.vectorize.*` メタデータなし → ベクトル化未適用
+*  SIMD命令無し（スカラー `fadd`, `select`）
+
+>  **opt\_1.ll** = 並列実行のみ導入された**マルチスレッドベースのIR**
+
+---
+
+##  `opt_2.ll` の違い【並列化 + SIMD指示】
+
+*  `__kmpc_*` による OpenMP 並列化は `opt_1.ll` と同様
+*  `!llvm.loop.vectorize.enable = true` メタデータが `j` ループに追加
+*  条件式 (`fcmp`, `select`) に関しても `vectorize.predicated` により SIMD展開可能
+*  `load <4 x float>`, `fadd <4 x float>`, `fcmp <4 x float>` 等の命令が IRに登場（環境により幅変動）
+
+>  **opt\_2.ll** = LLVM による **自動ベクトル化を強制的に誘導**する構成
+
+---
+
+##  `opt_3.ll` の違い【SIMD最大化 + 整列アクセス最適化】
+
+*  OpenMP 並列構造と `vectorize.enable` を継承
+*  `vectorize.width = 4` や `unroll.count = 4` など、**明示的な制御メタデータ**
+*  ベクトル命令の展開率向上：`fcmp`, `fadd`, `select` に `<4 x float>` を多用
+*  `load aligned` アクセス or `llvm.memcpy` により**メモリアクセス効率をさらに向上**
+
+>  **opt\_3.ll** = 並列化 + 明示的ベクトル幅 + メモリ整列の全最適化構成 → **最高効率実装IR**
+
+---
+
+##  差分比較まとめ表
+
+| 特徴                     | base.ll | opt\_1.ll | opt\_2.ll                        | opt\_3.ll                             |
+| ---------------------- | ------- | --------- | -------------------------------- | ------------------------------------- |
+| OpenMP 並列処理            | ❌       | ✅         | ✅                                | ✅                                     |
+| ベクトル化メタ                | ❌       | ❌         | ✅ `vectorize.enable = true`      | ✅ + `vectorize.width`, `unroll.count` |
+| SIMD命令 (`<N x float>`) | ❌       | ❌         | ✅ `fadd`, `fcmp`, `select` SIMD化 | ✅ より多くのSIMD命令 + 整列load/store          |
+| ループアウトライン化             | ❌       | ✅         | ✅                                | ✅                                     |
+| メモリアクセス高速化             | ❌       | ❌         | 一部ベクトル化による効率化                    | ✅ `load aligned` / `memcpy` 使用の可能性    |
+
+---
+
+##  結論
+
+* **opt\_1.ll**：マルチスレッド化（OpenMP）だけ導入した基礎構造
+* **opt\_2.ll**：OpenMP + ベクトル化メタ追加による**自動SIMD適用を誘導**
+* **opt\_3.ll**：ベクトル幅・アンローリング・整列ロードまで手が届いた**LLVM最適化最大活用版**
+
+---
+
+</details>
