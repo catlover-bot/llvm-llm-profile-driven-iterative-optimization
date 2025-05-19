@@ -73,3 +73,73 @@
 ---
 
 </details>
+
+<details><summary>c</summary>
+
+---
+
+##  **base.ll（非最適化）特徴**
+
+*  `__kmpc_*` 系 OpenMP 関数無し → 完全逐次処理
+*  `!llvm.loop.vectorize` などメタデータなし → SIMD最適化なし
+*  全体構造は直列ループ (`i` / `j`) で更新
+* 命令構成は：`load`, `fmul`, `fadd`, `store` のスカラー構成
+
+---
+
+##  `opt_1.ll` の違い【並列処理導入 + 式変形なし】
+
+*  `__kmpc_fork_call`, `__kmpc_for_static_init` による OpenMP 並列化あり（ループアウトライン）
+*  `@.omp_outlined.*` 関数で `i` ループ分割
+*  `!llvm.loop.vectorize.*` メタなし → SIMD化はされていない
+*  `vector width`, `unroll.count` メタなし
+
+>  **opt\_1.ll** = **並列化のみ導入した IR**。スカラー演算ベースのマルチスレッド実装
+
+---
+
+##  `opt_2.ll` の違い【OpenMP + ループ collapse + ベクトル化誘導】
+
+*  `__kmpc_*` 関数 + `omp_outlined` 関数あり
+*  ループに `!llvm.loop.vectorize.enable = true` メタ付き → **LLVMベクトル化指示**
+*  `collapse(2)` の影響で `i`,`j` 両ループが単一関数でまとめられる
+*  `fadd <4 x float>`, `fmul <4 x float>` 等の SIMD 命令登場（vectorレーン利用）
+
+>  **opt\_2.ll** = 並列 + ベクトル命令 + ループ集約により **演算並列性を最大化**
+
+---
+
+##  `opt_3.ll` の違い【OpenMP 安定版 + 明示SIMD】
+
+*  `__kmpc_*` 呼出による OpenMP 並列化あり（opt\_2と同様）
+*  `!llvm.loop.vectorize.width = 4` などの **ベクトル幅指定**付きメタ追加
+*  `unroll.count = 4` により LLVM に対してループ展開指示
+*  `load/store <4 x float>` の SIMD 命令を明示展開
+*  `memcpy`, `memset` によるメモリ高速初期化も一部にあり（環境依存）
+
+>  **opt\_3.ll** = LLVM に向けた **最大限のベクトル化・展開・整列** のヒントを持った **完成型IR**
+
+---
+
+##  比較まとめ表
+
+| 最適化項目                   | base.ll | opt\_1.ll | opt\_2.ll                       | opt\_3.ll                                   |
+| ----------------------- | ------- | --------- | ------------------------------- | ------------------------------------------- |
+| OpenMP 並列化 (`__kmpc_*`) | ❌       | ✅         | ✅                               | ✅                                           |
+| ループアウトライン (`omp_*`)     | ❌       | ✅         | ✅                               | ✅                                           |
+| ベクトル化メタ (`vectorize`)   | ❌       | ❌         | ✅ `enable = true`               | ✅ `enable`, `width = 4`, `unroll.count = 4` |
+| SIMD命令 (`<N x float>`)  | ❌       | ❌         | ✅ `fadd`, `fmul`, `load` SIMD命令 | ✅ さらに多くの SIMD 命令 + 高速メモリ操作                  |
+| `collapse(2)` の影響       | ❌       | ❌         | ✅ （i+j 統合）                      | ❌（各ループ個別）                                   |
+
+---
+
+##  結論
+
+* **opt\_1.ll**：スカラー演算のまま OpenMP を導入した**並列ベース**
+* **opt\_2.ll**：ベクトル化とループ統合による**データ並列性強化構成**
+* **opt\_3.ll**：ベクトル幅明示 + アンローリング + 整列ヒントにより **LLVM最適化完全対応IR**
+
+---
+
+
+</details>
