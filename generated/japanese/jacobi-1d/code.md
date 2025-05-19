@@ -67,3 +67,71 @@
 ---
 
 </details>
+
+<details><summary>ll</summary>
+
+---
+
+## **base.ll（非最適化）特徴**
+
+*  `__kmpc_*` 系のOpenMP関数無し → 完全逐次実行
+*  `!llvm.loop.vectorize` メタデータ無し → ベクトル化なし
+*  SIMD 命令（例：`fadd <4 x float>`）無し
+*  2段階反復（`B[i] = avg(A[i-1], A[i], A[i+1])` → `A[i] = avg(B[i-1], B[i], B[i+1])`）
+* 命令：`load`, `fadd`, `fmul`, `store` → すべてスカラー処理
+
+---
+
+##  `opt_1.ll` の違い【OpenMP SIMD 指示対応】
+
+*  `!llvm.loop.vectorize.enable = true` メタ付きループあり → LLVMにベクトル化を明示
+*  `fadd <4 x float>` / `fmul <4 x float>` などSIMD命令が登場
+*  `loop.vectorize.width = 4` や `unroll.count = 4` などループヒントあり
+*  `__kmpc_*` 関数は無し（OpenMPマルチスレッド処理は未導入）
+
+>  **opt\_1.ll** = ベクトル命令最適化を LLVM に誘導した **SIMD 強化型 IR**
+
+---
+
+##  `opt_2.ll` の違い【ループアンローリング構成】
+
+*  `__kmpc_*` なし → OpenMP 未使用
+*  SIMD命令無し（スカラー命令のみ）
+*  `loop unroll full` 相当の構造あり：ループ展開された形跡（命令が4つずつ並ぶ）
+*  `i+=4` に対応するパターンの `getelementptr` が連続出現
+
+>  **opt\_2.ll** = LLVMベースの**手動アンローリング対応IR**。ベクトル命令は無しだが命令密度増加で高速化志向
+
+---
+
+##  `opt_3.ll` の違い【opt\_1と同等構成】
+
+*  `vectorize.enable = true`, `vectorize.width`, `unroll.count` あり
+*  SIMD命令（`<4 x float>`）出現
+*  `loop.unroll.enable = true` により LLVM に明示展開許可
+
+>  **opt\_3.ll** = **opt\_1.llと実質的に同等**。ベクトル命令活用型 IR
+
+---
+
+##  IRレベル差分まとめ表
+
+| 特徴                       | base.ll | opt\_1.ll                   | opt\_2.ll  | opt\_3.ll |
+| ------------------------ | ------- | --------------------------- | ---------- | --------- |
+| OpenMP 並列化 (`__kmpc_*`)  | ❌       | ❌                           | ❌          | ❌         |
+| SIMD命令 (`<4 x float>`など) | ❌       | ✅ `fadd`, `fmul`, `load`等   | ❌          | ✅ 同上      |
+| ベクトル化メタ (`vectorize`)    | ❌       | ✅ `vectorize.enable = true` | ❌          | ✅ 同上      |
+| ループアンローリング構造             | ❌       | ✅ `unroll.count = 4`        | ✅（手動展開風）   | ✅ 同上      |
+| 演算形式                     | スカラー    | SIMD                        | スカラー（手動展開） | SIMD      |
+
+---
+
+##  結論
+
+* **opt\_1.ll / opt\_3.ll**：LLVMベクトル化メタ + SIMD命令展開あり → **最適なSIMD向けIR**
+* **opt\_2.ll**：手動でアンローリングされた構造。**高命令密度だがSIMDは無し**
+* **base.ll**：逐次スカラー処理のみ → 最適化余地大
+
+---
+
+</details>
