@@ -65,3 +65,73 @@
 
 ---
 </details>
+
+<details><summary>ll</summary>
+
+
+---
+
+##  **base.ll（非最適化）特徴**
+
+*  `__kmpc_*` や `omp_outlined` 関数無し → 完全逐次構造
+* `!llvm.loop.*` メタデータ無し → LLVM による自動最適化対象外
+*  処理構造：時間ステップループ `t` の中に `ey`, `ex`, `hz` の計算ループ
+*  命令構成：基本的な `load`, `fadd`, `fsub`, `store`
+
+---
+
+##  `opt_1.ll` の違い【依存性除去ヒント（ベクトル化指示）】
+
+*  OpenMP ランタイム呼出し無し → シングルスレッドのまま
+*  `!llvm.loop.vectorize.enable = true` メタデータが追加
+*  SIMD 命令 (`<4 x float>`) は確認されず（ただしヒントは有効）
+*  `ivdep` 相当のベクトル化許可が IR に反映 → `loop.vectorize` メタあり
+
+>  **opt\_1.ll** = ベクトル化許可の最小最適化 → LLVM に SIMD 化を促す構成
+
+---
+
+##  `opt_2.ll` の違い【並列化 + SIMD ヒント】
+
+*  `__kmpc_fork_call`, `__kmpc_for_static_init` あり → OpenMP 並列化有効
+*  `@.omp_outlined.*` 関数による各ループ分割
+*  `!llvm.loop.vectorize.enable = true` 付きメタデータを保持
+*  `fadd <4 x float>`, `fsub <4 x float>` 等の **SIMD命令出現あり**
+*  `schedule(static/dynamic)` の制御は確認されず（IR的にはデフォルト）
+
+>  **opt\_2.ll** = **マルチスレッド + ベクトル命令対応**の並列化中間段階
+
+---
+
+##  `opt_3.ll` の違い【最終形：バリア最小化＋最適ヒント】
+
+*  `opt_2` 構造をすべて継承
+*  各 `__kmpc_for_static_init` によるループ分割に `nowait` 相当（IRでは複数 `fork_call` 分離）を導入
+*  `loop.vectorize.width = 4` などベクトル幅ヒントが一部ループに追加
+*  ベクトル命令の出現率が向上、ループ分離によるスケジューラオーバーヘッド減少
+*  `memcpy` 最適化による一部配列初期化処理の高速化も確認される場合あり（環境依存）
+
+>  **opt\_3.ll** = ベクトル化幅・ループ制御・並列分離の全てを適用した**最終フル最適化形**
+
+---
+
+##  差分まとめ表
+
+| 最適化内容                 | base.ll | opt\_1.ll | opt\_2.ll         | opt\_3.ll                 |
+| --------------------- | ------- | --------- | ----------------- | ------------------------- |
+| OpenMP 並列処理           | ❌       | ❌         | ✅ `__kmpc_*`      | ✅ `__kmpc_*` + `nowait`相当 |
+| SIMD メタ (`vectorize`) | ❌       | ✅         | ✅                 | ✅ + `vectorize.width`     |
+| SIMD 命令展開（IRレベル）      | ❌       | ❌         | ✅ `<4 x float>`   | ✅ 拡張 SIMD命令（+可能な展開数増加）    |
+| ループ分離（hz, ex, ey）     | ❌       | ❌         | ❌（時間的には一体）        | ✅ 各処理が別 `omp_outlined` 関数 |
+| メモリ操作最適化              | ❌       | ❌         | 一部 load/store 最適化 | ✅ `memcpy`, `memset` の可能性 |
+
+---
+
+##  結論
+
+* **opt\_1.ll**：逐次処理のまま LLVM ベクトル化だけを誘導する構造
+* **opt\_2.ll**：OpenMP 並列化 + SIMD展開により大幅な実行時間短縮が期待できる構造
+* **opt\_3.ll**：バリア最小化 + vector width ヒントで LLVM の最大限最適化を引き出す設計
+
+---
+</details>
