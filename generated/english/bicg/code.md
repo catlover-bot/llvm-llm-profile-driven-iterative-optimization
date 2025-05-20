@@ -113,7 +113,7 @@ for (i)
 * **opt\_1.c**：並列化ありだが、原子操作が重く、**スケーラビリティに欠ける**
 
 ---
-/details>
+</details>
 
 <details><summary>ll</summary>
 
