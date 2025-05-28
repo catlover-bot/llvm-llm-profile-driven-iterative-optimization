@@ -42,7 +42,7 @@ cov[i][j]=cov[j][i]=sum;
 
 <details><summary>ll</summary>
 
-以下は、LLVM IR（`.ll`）ファイルをパースして主要命令数を集計した結果です。`covariance_opt_base.ll`（base）と最適化版３種類（opt1～opt3）を比較しています。
+以下は、LLVM IR（`.ll`）ファイルの主要命令数を集計した結果です。`covariance_opt_base.ll`（base）と最適化版３種類（opt1～opt3）を比較しています。
 
 | ファイル     | fmul | fadd | fdiv | load | store | φノード | icmp |  br | !llvm.loop |
 | -------- | :--: | :--: | :--: | :--: | :---: | :--: | :--: | :-: | :--------: |
