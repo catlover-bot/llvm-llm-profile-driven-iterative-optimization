@@ -2,6 +2,8 @@
 
 source venv/bin/activate
 
+mibench: source .venv/bin/activate
+
 export OPENAI_API_KEY=""
 
 標準出力保存
